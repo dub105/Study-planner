@@ -700,6 +700,139 @@ ${memoEs.length>0?memoEs.map(([k,d])=>`  ${k}: ${d.memo}`).join("\n"):"  ・な�
     );
   };
 
+  const GraphView = () => {
+    const [range, setRange] = useState(14);
+    const [selectedDay, setSelectedDay] = useState(null);
+
+    const allEntries = Object.entries(allData)
+      .filter(([,d]) => d.mood)
+      .sort((a,b) => a[0].localeCompare(b[0]));
+
+    const cutoffKey = range > 0 ? (() => {
+      const d = new Date(); d.setDate(d.getDate() - range + 1);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    })() : null;
+
+    const entries = cutoffKey ? allEntries.filter(([k]) => k >= cutoffKey) : allEntries;
+
+    if (allEntries.length === 0) return (
+      <div style={{ textAlign:"center",padding:"40px 20px",color:colors.textLight }}>
+        <KoalaFace mood={3}/><div style={{ marginTop:"12px",fontSize:"14px" }}>まだ記録がありません</div>
+      </div>
+    );
+
+    // Daily chart
+    const dW=320,dH=150,dpL=28,dpR=12,dpT=14,dpB=30;
+    const diW=dW-dpL-dpR, diH=dH-dpT-dpB;
+    const dyOf = v => dpT + diH - ((v-1)/4)*diH;
+    const n = entries.length;
+    const dxOf = i => dpL + (n>1?(i/(n-1))*diW:diW/2);
+    const dPts = entries.map(([k,d],i) => ({ x:dxOf(i), y:dyOf(d.mood), mood:d.mood, key:k }));
+    const dPath = dPts.length>1 ? dPts.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') : null;
+    const lblIdx = n<=7 ? dPts.map((_,i)=>i) : n<=14 ? [0,Math.floor(n/2),n-1] : [0,Math.floor(n/3),Math.floor(2*n/3),n-1];
+
+    // Hourly chart
+    const selData = selectedDay ? allData[selectedDay] : null;
+    const hLog = selData?.moodLog?.length>0 ? selData.moodLog : null;
+    const hW=320,hH=120,hpL=28,hpR=12,hpT=14,hpB=28;
+    const hiW=hW-hpL-hpR, hiH=hH-hpT-hpB;
+    const hyOf = v => hpT + hiH - ((v-1)/4)*hiH;
+    const toMin = t => { const [h,m]=t.split(':').map(Number); return h*60+m; };
+    let hPts=null, hPath=null;
+    if (hLog) {
+      const times=hLog.map(e=>toMin(e.time));
+      const minT=Math.min(...times), spanT=Math.max(...times)-minT||60;
+      const hxOf = t => hpL+((toMin(t)-minT)/spanT)*hiW;
+      hPts = hLog.map(e=>({ x:hxOf(e.time), y:hyOf(e.mood), mood:e.mood, time:e.time }));
+      hPath = hPts.length>1 ? hPts.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') : null;
+    }
+
+    return (
+      <div>
+        <div style={cardStyle}>
+          <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:"6px" }}>
+              <EucalyptusLeaf/>
+              <span style={{ fontSize:"14px",fontWeight:"600",color:colors.text }}>日ごとの気分の推移</span>
+            </div>
+            <div style={{ display:"flex",gap:"4px" }}>
+              {[{v:7,l:"7日"},{v:14,l:"14日"},{v:30,l:"30日"},{v:0,l:"全期間"}].map(({v,l})=>(
+                <button key={v} onClick={()=>{setRange(v);setSelectedDay(null);}} style={{ fontSize:"11px",padding:"3px 8px",borderRadius:"12px",border:`1px solid ${range===v?colors.primary:colors.border}`,background:range===v?colors.primary:"white",color:range===v?"white":colors.textLight,cursor:"pointer" }}>{l}</button>
+              ))}
+            </div>
+          </div>
+          {entries.length===0 ? (
+            <div style={{ fontSize:"13px",color:colors.textLight,textAlign:"center",padding:"20px" }}>この期間の記録がありません</div>
+          ) : (<>
+            <svg viewBox={`0 0 ${dW} ${dH}`} style={{ width:"100%",overflow:"visible" }}>
+              {[1,2,3,4,5].map(v=>(
+                <g key={v}>
+                  <line x1={dpL} y1={dyOf(v)} x2={dW-dpR} y2={dyOf(v)} stroke={colors.border} strokeWidth="0.5" strokeDasharray="4,3"/>
+                  <text x={dpL-4} y={dyOf(v)} fontSize="9" fill={colors.textLight} textAnchor="end" dominantBaseline="middle">{v}</text>
+                </g>
+              ))}
+              {dPath&&<path d={dPath} fill="none" stroke={colors.primaryLight} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>}
+              {dPts.map((p,i)=>{
+                const mi=MOODS.find(m=>m.value===p.mood);
+                return (
+                  <g key={p.key} onClick={()=>setSelectedDay(prev=>prev===p.key?null:p.key)} style={{cursor:"pointer"}}>
+                    <circle cx={p.x} cy={p.y} r={selectedDay===p.key?7:5} fill={mi?.color||colors.primary} stroke="white" strokeWidth="1.5"/>
+                  </g>
+                );
+              })}
+              {lblIdx.map(i=>(
+                <text key={i} x={dPts[i].x} y={dH-4} fontSize="9" fill={colors.textLight} textAnchor="middle">{entries[i][0].slice(5)}</text>
+              ))}
+            </svg>
+            <div style={{ display:"flex",gap:"8px",flexWrap:"wrap",marginTop:"6px" }}>
+              {MOODS.map(m=>(
+                <div key={m.value} style={{ display:"flex",alignItems:"center",gap:"3px" }}>
+                  <div style={{ width:"8px",height:"8px",borderRadius:"50%",background:m.color }}/>
+                  <span style={{ fontSize:"10px",color:colors.textLight }}>{m.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:"11px",color:colors.textLight,marginTop:"6px",textAlign:"center" }}>ドットをタップするとその日の時間別グラフを表示</div>
+          </>)}
+        </div>
+
+        {selectedDay&&(
+          <div style={{ ...cardStyle,borderColor:colors.primary }}>
+            <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px" }}>
+              <div style={{ fontSize:"13px",fontWeight:"600",color:colors.text }}>{formatDate(selectedDay)}の時間別気分</div>
+              <button onClick={()=>setSelectedDay(null)} style={{ fontSize:"11px",color:colors.textLight,background:"none",border:`1px solid ${colors.border}`,borderRadius:"12px",padding:"2px 8px",cursor:"pointer" }}>閉じる</button>
+            </div>
+            {hPts ? (
+              <svg viewBox={`0 0 ${hW} ${hH}`} style={{ width:"100%" }}>
+                {[1,2,3,4,5].map(v=>(
+                  <g key={v}>
+                    <line x1={hpL} y1={hyOf(v)} x2={hW-hpR} y2={hyOf(v)} stroke={colors.border} strokeWidth="0.5" strokeDasharray="4,3"/>
+                    <text x={hpL-4} y={hyOf(v)} fontSize="9" fill={colors.textLight} textAnchor="end" dominantBaseline="middle">{v}</text>
+                  </g>
+                ))}
+                {hPath&&<path d={hPath} fill="none" stroke={colors.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>}
+                {hPts.map((p,i)=>{
+                  const mi=MOODS.find(m=>m.value===p.mood);
+                  return (
+                    <g key={i}>
+                      <circle cx={p.x} cy={p.y} r={5} fill={mi?.color||colors.primary} stroke="white" strokeWidth="1.5"/>
+                      <text x={p.x} y={hH-4} fontSize="9" fill={colors.textLight} textAnchor="middle">{p.time}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            ) : (
+              <div style={{ fontSize:"12px",color:colors.textLight,textAlign:"center",padding:"16px" }}>
+                この日は時間別の記録がありません<br/>
+                <span style={{ fontSize:"11px" }}>（✏️記録タブで気分を時間ごとに追加できます）</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (loading) return (
     <div style={{ display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"#f5f0f8",gap:"16px" }}>
       <KoalaTiny size={48}/><div style={{ fontSize:"14px",color:"#7a6e84" }}>読み込み中…</div>
@@ -712,17 +845,18 @@ ${memoEs.length>0?memoEs.map(([k,d])=>`  ${k}: ${d.memo}`).join("\n"):"  ・な�
         <KoalaTiny size={32}/>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:"16px",fontWeight:"700",color:colors.text }}>コアラの体調ノート</div>
-          <div style={{ fontSize:"11px",color:colors.textLight }}>{view==="record"?formatDate(selectedKey):view==="history"?"過去の記録":"診察まとめ"}</div>
+          <div style={{ fontSize:"11px",color:colors.textLight }}>{view==="record"?formatDate(selectedKey):view==="history"?"過去の記録":view==="graph"?"グラフ":"診察まとめ"}</div>
         </div>
         <KoalaTiny size={26}/>
       </div>
       <div style={{ maxWidth:"500px",margin:"0 auto",padding:"16px 16px 100px" }}>
         {view==="record"&&<RecordView/>}
         {view==="history"&&<HistoryView/>}
+        {view==="graph"&&<GraphView/>}
         {view==="summary"&&<SummaryView/>}
       </div>
       <div style={{ position:"fixed",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${colors.border}`,display:"flex",justifyContent:"center",padding:"8px 0 12px" }}>
-        {[{key:"record",icon:"✏️",label:"今日の記録"},{key:"history",icon:"📅",label:"過去の記録"},{key:"summary",icon:"🩺",label:"診察まとめ"}].map(tab=>(
+        {[{key:"record",icon:"✏️",label:"記録"},{key:"history",icon:"📅",label:"履歴"},{key:"graph",icon:"📊",label:"グラフ"},{key:"summary",icon:"🩺",label:"まとめ"}].map(tab=>(
           <button key={tab.key} onClick={()=>setView(tab.key)} style={{ flex:1,maxWidth:"140px",padding:"6px 4px",border:"none",background:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"2px" }}>
             <span style={{ fontSize:"20px" }}>{tab.icon}</span>
             <span style={{ fontSize:"11px",color:view===tab.key?colors.primary:colors.textLight,fontWeight:view===tab.key?"700":"400" }}>{tab.label}</span>
