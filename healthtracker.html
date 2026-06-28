@@ -187,7 +187,7 @@ function App() {
   const [todayKey, setTodayKey] = useState(getTodayKey);
   const [selectedKey, setSelectedKey] = useState(getTodayKey);
 
-  const [form, setForm] = useState({ mood:0, sleepHours:"", sleepQuality:0, appetite:0, hasSI:null, siIntensity:0, symptoms:[], memo:"", medLogs:{} });
+  const [form, setForm] = useState({ mood:0, sleepHours:"", sleepQuality:0, appetite:0, hasSI:null, siIntensity:0, symptoms:[], memo:"", medLogs:{}, moodLog:[] });
 
   useEffect(() => {
     (async () => {
@@ -205,7 +205,7 @@ function App() {
         await sset("koala-med-list", DEFAULT_MEDS);
       }
       const t = loaded[getTodayKey()] || {};
-      setForm({ mood:t.mood||0, sleepHours:t.sleepHours||"", sleepQuality:t.sleepQuality||0, appetite:t.appetite||0, hasSI:t.hasSI??null, siIntensity:t.siIntensity||0, symptoms:t.symptoms||[], memo:t.memo||"", medLogs:t.medLogs||{} });
+      setForm({ mood:t.mood||0, sleepHours:t.sleepHours||"", sleepQuality:t.sleepQuality||0, appetite:t.appetite||0, hasSI:t.hasSI??null, siIntensity:t.siIntensity||0, symptoms:t.symptoms||[], memo:t.memo||"", medLogs:t.medLogs||{}, moodLog:t.moodLog||[] });
       setLoading(false);
     })();
   }, []);
@@ -229,7 +229,7 @@ function App() {
   useEffect(() => {
     if (!loading) {
       const t = allData[selectedKey] || {};
-      setForm({ mood:t.mood||0, sleepHours:t.sleepHours||"", sleepQuality:t.sleepQuality||0, appetite:t.appetite||0, hasSI:t.hasSI??null, siIntensity:t.siIntensity||0, symptoms:t.symptoms||[], memo:t.memo||"", medLogs:t.medLogs||{} });
+      setForm({ mood:t.mood||0, sleepHours:t.sleepHours||"", sleepQuality:t.sleepQuality||0, appetite:t.appetite||0, hasSI:t.hasSI??null, siIntensity:t.siIntensity||0, symptoms:t.symptoms||[], memo:t.memo||"", medLogs:t.medLogs||{}, moodLog:t.moodLog||[] });
       setSaved(false);
     }
   }, [selectedKey]);
@@ -292,7 +292,22 @@ function App() {
     </div>
   );
 
-  const RecordView = () => (
+  const RecordView = () => {
+    const getNow = () => { const n = new Date(); return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; };
+    const [newMoodTime, setNewMoodTime] = useState(getNow);
+    const [newMoodValue, setNewMoodValue] = useState(0);
+    const addMoodEntry = () => {
+      if (!newMoodValue) return;
+      const entry = { time: newMoodTime, mood: newMoodValue };
+      const updatedLog = [...(form.moodLog||[]), entry].sort((a,b)=>a.time.localeCompare(b.time));
+      setForm(f => ({ ...f, moodLog: updatedLog, mood: updatedLog[updatedLog.length-1].mood }));
+      setNewMoodValue(0); setNewMoodTime(getNow());
+    };
+    const removeMoodEntry = (index) => {
+      const updatedLog = (form.moodLog||[]).filter((_,i)=>i!==index);
+      setForm(f => ({ ...f, moodLog: updatedLog, mood: updatedLog.length>0?updatedLog[updatedLog.length-1].mood:0 }));
+    };
+    return (
     <div>
       <div style={{ textAlign:"center", padding:"10px 0 8px" }}>
         <KoalaOnBranch/>
@@ -317,14 +332,39 @@ function App() {
       </div>
 
       <div style={cardStyle}>
-        {sectionLabel("気分")}
-        <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-          {MOODS.map(m => (
-            <button key={m.value} onClick={() => updateForm("mood",m.value)} style={{ ...btnStyle(form.mood===m.value,m.color), display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 12px", gap:"3px", flex:"1", minWidth:"56px" }}>
-              <span style={{ fontSize:"20px" }}>{m.emoji}</span>
-              <span style={{ fontSize:"11px", whiteSpace:"nowrap" }}>{m.label}</span>
-            </button>
-          ))}
+        {sectionLabel("気分の記録（時間帯別）")}
+        {(form.moodLog||[]).length>0&&(
+          <div style={{ marginBottom:"12px" }}>
+            {(form.moodLog||[]).map((entry,i)=>{
+              const mi=MOODS.find(m=>m.value===entry.mood);
+              return (
+                <div key={i} style={{ display:"flex",alignItems:"center",gap:"10px",padding:"9px 12px",background:colors.bg,borderRadius:"10px",marginBottom:"6px",border:`1.5px solid ${mi?.color||colors.border}` }}>
+                  <span style={{ fontSize:"13px",color:colors.textLight,minWidth:"42px",fontWeight:"600" }}>{entry.time}</span>
+                  <span style={{ fontSize:"20px" }}>{mi?.emoji}</span>
+                  <span style={{ fontSize:"13px",color:colors.text,flex:1 }}>{mi?.label}</span>
+                  <button onClick={()=>removeMoodEntry(i)} style={{ width:"22px",height:"22px",borderRadius:"50%",background:colors.border,border:"none",color:colors.textLight,fontSize:"14px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0 }}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ background:"#f8f5fc",borderRadius:"12px",padding:"12px",border:`1px dashed ${colors.border}` }}>
+          <div style={{ fontSize:"12px",color:colors.textLight,marginBottom:"8px" }}>今の気分を追加</div>
+          <div style={{ marginBottom:"8px" }}>
+            <input type="time" value={newMoodTime} onChange={e=>setNewMoodTime(e.target.value)}
+              style={{ padding:"6px 10px",borderRadius:"10px",border:`1.5px solid ${colors.border}`,fontSize:"14px",outline:"none",fontFamily:"inherit",color:colors.text }}/>
+          </div>
+          <div style={{ display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"10px" }}>
+            {MOODS.map(m=>(
+              <button key={m.value} onClick={()=>setNewMoodValue(m.value)} style={{ ...btnStyle(newMoodValue===m.value,m.color),display:"flex",flexDirection:"column",alignItems:"center",padding:"8px 10px",gap:"2px",flex:"1",minWidth:"50px" }}>
+                <span style={{ fontSize:"18px" }}>{m.emoji}</span>
+                <span style={{ fontSize:"10px",whiteSpace:"nowrap" }}>{m.label}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={addMoodEntry} disabled={!newMoodValue} style={{ width:"100%",padding:"9px",borderRadius:"10px",border:"none",background:newMoodValue?colors.primary:colors.border,color:"white",fontSize:"13px",fontWeight:"600",cursor:newMoodValue?"pointer":"default" }}>
+            ＋ 記録する
+          </button>
         </div>
       </div>
 
@@ -457,7 +497,8 @@ function App() {
         🌿 つらくなったときは、よりそいホットライン <strong>0120-279-338</strong>（24時間）に電話してみてください。
       </div>
     </div>
-  );
+    );
+  };
 
   const HistoryView = () => {
     const entries = Object.entries(allData).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,30);
